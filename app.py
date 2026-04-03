@@ -1,8 +1,3 @@
-"""
-app.py
-Flask web service for the warm-up assignment
-"""
-
 from flask import Flask, request, jsonify, render_template
 from starter_preprocess import TextPreprocessor
 
@@ -10,101 +5,86 @@ app = Flask(__name__)
 preprocessor = TextPreprocessor()
 
 
-@app.route('/')
+@app.route("/")
 def home():
-    """Render a simple HTML form for URL input"""
-    return render_template('index.html')
+    return render_template("index.html")
 
 
-@app.route('/api/clean', methods=['POST'])
+@app.route("/api/clean", methods=["POST"])
 def clean_text():
-    """
-    API endpoint that accepts a URL and returns cleaned text
-
-    Expected JSON input:
-    {"url": "https://www.gutenberg.org/files/1342/1342-0.txt"}
-
-    Returns JSON:
-    {
-        "success": true/false,
-        "cleaned_text": "...",
-        "statistics": {...},
-        "summary": "...",
-        "error": "..." (if applicable)
-    }
-    """
     try:
         data = request.get_json()
 
-        if not data or "url" not in data:
+        if not data:
             return jsonify({
                 "success": False,
-                "error": "Missing 'url' in request body."
+                "error": "Request body must be valid JSON."
             }), 400
 
-        url = data["url"]
+        url = data.get("url", "").strip()
+        if not url:
+            return jsonify({
+                "success": False,
+                "error": "Please provide a Project Gutenberg .txt URL."
+            }), 400
 
         raw_text = preprocessor.fetch_from_url(url)
-        cleaned_text = preprocessor.clean_gutenberg_text(raw_text)
-        normalized_text = preprocessor.normalize_text(cleaned_text, preserve_sentences=True)
-
-        statistics = preprocessor.get_text_statistics(normalized_text)
-        summary = preprocessor.create_summary(normalized_text, num_sentences=3)
+        cleaned_text = preprocessor.clean_text(raw_text)
+        statistics = preprocessor.get_text_statistics(cleaned_text)
+        summary = preprocessor.create_summary(cleaned_text, 3)
 
         return jsonify({
             "success": True,
-            "cleaned_text": normalized_text[:500],
+            "cleaned_text": cleaned_text,
             "statistics": statistics,
             "summary": summary
-        })
+        }), 200
 
-    except Exception as e:
+    except ValueError as exc:
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error": str(exc)
+        }), 400
+
+    except Exception as exc:
+        return jsonify({
+            "success": False,
+            "error": str(exc)
         }), 500
 
 
-@app.route('/api/analyze', methods=['POST'])
+@app.route("/api/analyze", methods=["POST"])
 def analyze_text():
-    """
-    API endpoint that accepts raw text and returns statistics only
-
-    Expected JSON input:
-    {"text": "Your raw text here..."}
-
-    Returns JSON:
-    {
-        "success": true/false,
-        "statistics": {...},
-        "error": "..." (if applicable)
-    }
-    """
     try:
         data = request.get_json()
 
-        if not data or "text" not in data:
+        if not data:
             return jsonify({
                 "success": False,
-                "error": "Missing 'text' in request body."
+                "error": "Request body must be valid JSON."
             }), 400
 
-        text = data["text"]
-        normalized_text = preprocessor.normalize_text(text, preserve_sentences=True)
-        statistics = preprocessor.get_text_statistics(normalized_text)
+        text = data.get("text", "").strip()
+        if not text:
+            return jsonify({
+                "success": False,
+                "error": "Please provide text to analyze."
+            }), 400
+
+        cleaned_text = preprocessor.clean_text(text)
+        statistics = preprocessor.get_text_statistics(cleaned_text)
 
         return jsonify({
             "success": True,
             "statistics": statistics
-        })
+        }), 200
 
-    except Exception as e:
+    except Exception as exc:
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error": str(exc)
         }), 500
 
 
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
-    app.run(debug=True, port=5000, host='0.0.0.0')
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=5000)

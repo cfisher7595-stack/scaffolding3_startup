@@ -1,314 +1,288 @@
-"""
-starter_preprocess.py
-Starter code for text preprocessing - focus on the statistics, not the regex!
-
-This is the same code you'll use in the main Shannon assignment next week.
-"""
-
 import re
-import json
-import requests
-from typing import List, Dict, Tuple
 from collections import Counter
-import string
+from typing import Dict, List
+from urllib.parse import urlparse
+
+import requests
 
 
 class TextPreprocessor:
-    """Handles all the annoying text cleaning so you can focus on the fun stuff"""
-
     def __init__(self):
-        # Gutenberg markers (these are common, add more if needed)
-        self.gutenberg_markers = [
-            "*** START OF THIS PROJECT GUTENBERG",
-            "*** END OF THIS PROJECT GUTENBERG",
-            "*** START OF THE PROJECT GUTENBERG",
-            "*** END OF THE PROJECT GUTENBERG",
-            "*END*THE SMALL PRINT",
-            "<<THIS ELECTRONIC VERSION"
-        ]
-
-    def clean_gutenberg_text(self, raw_text: str) -> str:
-        """Remove Project Gutenberg headers/footers"""
-        lines = raw_text.split('\n')
-
-        # Find start and end markers
-        start_idx = 0
-        end_idx = len(lines)
-
-        for i, line in enumerate(lines):
-            if any(marker in line for marker in self.gutenberg_markers[:4]):
-                if "START" in line:
-                    start_idx = i + 1
-                elif "END" in line:
-                    end_idx = i
-                    break
-
-        # Join the cleaned lines
-        cleaned = '\n'.join(lines[start_idx:end_idx])
-
-        # Remove excessive whitespace
-        cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
-        cleaned = re.sub(r' {2,}', ' ', cleaned)
-
-        return cleaned.strip()
-
-    def normalize_text(self, text: str, preserve_sentences: bool = True) -> str:
-        """
-        Normalize text while preserving sentence boundaries
-
-        Args:
-            text: Input text
-            preserve_sentences: If True, keeps . ! ? for sentence detection
-        """
-        # Convert to lowercase
-        text = text.lower()
-
-        # Standardize quotes and dashes
-        text = re.sub(r'[""]', '"', text)
-        text = re.sub(r"['']", "'", text)
-        text = re.sub(r'—|–', '-', text)
-
-        if preserve_sentences:
-            # Keep sentence endings but remove other punctuation
-            # This regex keeps . ! ? but removes , ; : etc
-            text = re.sub(r"[^\w\s.!?'-]", ' ', text)
-        else:
-            # Remove all punctuation except apostrophes in contractions
-            text = re.sub(r"(?<!\w)'(?!\w)|[^\w\s]", ' ', text)
-
-        # Clean up whitespace
-        text = re.sub(r'\s+', ' ', text)
-
-        return text.strip()
-
-    def tokenize_sentences(self, text: str) -> List[str]:
-        """Split text into sentences"""
-        # Simple sentence splitter (you can make this fancier with NLTK)
-        sentences = re.split(r'[.!?]+', text)
-
-        # Clean up and filter
-        sentences = [s.strip() for s in sentences if s.strip()]
-
-        return sentences
-
-    def tokenize_words(self, text: str) -> List[str]:
-        """Split text into words"""
-        # Remove sentence endings for word tokenization
-        text_for_words = re.sub(r'[.!?]', '', text)
-
-        # Split on whitespace and filter empty strings
-        words = text_for_words.split()
-        words = [w for w in words if w]
-
-        return words
-
-    def tokenize_chars(self, text: str, include_space: bool = True) -> List[str]:
-        """Split text into characters"""
-        if include_space:
-            # Replace multiple spaces with single space
-            text = re.sub(r'\s+', ' ', text)
-            return list(text)
-        else:
-            return [c for c in text if c != ' ']
-
-    def get_sentence_lengths(self, sentences: List[str]) -> List[int]:
-        """Get word count for each sentence"""
-        return [len(self.tokenize_words(sent)) for sent in sentences]
+        self.stop_words = {
+            "the", "and", "to", "of", "a", "in", "it", "is", "i", "you", "he",
+            "she", "they", "we", "was", "were", "be", "been", "being", "for",
+            "on", "with", "as", "at", "by", "an", "or", "that", "this", "from",
+            "but", "not", "are", "his", "her", "their", "my", "our", "your",
+            "me", "him", "them", "said", "had", "have", "has", "do", "did",
+            "so", "no", "if", "out", "up", "all", "one", "would", "there",
+            "what", "when", "who", "which", "into", "then", "than", "could",
+            "should", "about", "over", "again", "very"
+        }
 
     def fetch_from_url(self, url: str) -> str:
         """
         Fetch text content from a URL (especially Project Gutenberg)
-
-        Args:
-            url: URL to a .txt file
-
-        Returns:
-            Raw text content
-
-        Raises:
-            Exception if URL is invalid or cannot be reached
         """
-        if not isinstance(url, str) or not url.strip():
-            raise Exception("URL is required.")
+        if not url or not isinstance(url, str):
+            raise ValueError("A valid URL is required.")
 
-        url = url.strip()
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("URL must start with http:// or https://")
 
-        if not url.lower().endswith(".txt"):
-            raise Exception("URL must point to a .txt file.")
+        if not parsed.path.lower().endswith(".txt"):
+            raise ValueError("URL must point to a .txt file")
 
         try:
-            response = requests.get(url, timeout=15)
+            response = requests.get(url, timeout=20)
             response.raise_for_status()
             return response.text
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"Could not fetch text from URL: {e}")
+        except requests.RequestException as exc:
+            raise Exception(f"Could not fetch text from URL: {exc}") from exc
+
+    def remove_gutenberg_boilerplate(self, text: str) -> str:
+        """
+        Remove standard Project Gutenberg header and footer.
+        """
+        if not text:
+            return ""
+
+        start_patterns = [
+            r"\*\*\* START OF THE PROJECT GUTENBERG EBOOK .*? \*\*\*",
+            r"\*\*\* START OF THIS PROJECT GUTENBERG EBOOK .*? \*\*\*",
+            r"\*\*\*START OF THE PROJECT GUTENBERG EBOOK .*?\*\*\*",
+            r"\*\*\*START OF THIS PROJECT GUTENBERG EBOOK .*?\*\*\*",
+        ]
+
+        end_patterns = [
+            r"\*\*\* END OF THE PROJECT GUTENBERG EBOOK .*? \*\*\*",
+            r"\*\*\* END OF THIS PROJECT GUTENBERG EBOOK .*? \*\*\*",
+            r"\*\*\*END OF THE PROJECT GUTENBERG EBOOK .*?\*\*\*",
+            r"\*\*\*END OF THIS PROJECT GUTENBERG EBOOK .*?\*\*\*",
+        ]
+
+        for pattern in start_patterns:
+            match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+            if match:
+                text = text[match.end():]
+                break
+
+        for pattern in end_patterns:
+            match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+            if match:
+                text = text[:match.start()]
+                break
+
+        return text.strip()
+
+    def remove_front_matter(self, text: str) -> str:
+        """
+        Remove title pages, edition info, contents, and similar front matter.
+        Tries to begin at the first real chapter/body section.
+        """
+        if not text:
+            return ""
+
+        # Normalize line endings first
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+        # Remove bracketed illustration notes like [Illustration]
+        text = re.sub(r"\[.*?\]", " ", text)
+
+        # Remove obvious ebook metadata lines
+        lines = [line.strip() for line in text.split("\n")]
+
+        filtered_lines = []
+        for line in lines:
+            lower = line.lower()
+
+            if not line:
+                filtered_lines.append("")
+                continue
+
+            if any(bad in lower for bad in [
+                "project gutenberg",
+                "produced by",
+                "transcribed by",
+                "transcriber",
+                "illustration",
+                "millennium fulcrum edition",
+                "distributed proofreaders",
+                "http://",
+                "https://",
+                "copyright",
+                "release date:",
+                "language:",
+                "character set encoding:",
+                "encoding:",
+                "title:",
+                "author:",
+                "ebook no.",
+                "e-text prepared by",
+            ]):
+                continue
+
+            filtered_lines.append(line)
+
+        text = "\n".join(filtered_lines)
+
+        # Remove contents block if present
+        contents_patterns = [
+            r"contents\s+chapter .*?(?=(chapter i\.|chapter 1|down the rabbit-hole|alice was beginning|once upon))",
+            r"contents.*?(?=(chapter i\.|chapter 1|down the rabbit-hole|alice was beginning|once upon))",
+        ]
+
+        for pattern in contents_patterns:
+            text = re.sub(pattern, "", text, flags=re.IGNORECASE | re.DOTALL)
+
+        # Try to start at first real chapter heading or first narrative sentence
+        start_markers = [
+            r"CHAPTER I\.?\s+Down the Rabbit[- ]Hole",
+            r"Chapter I\.?\s+Down the Rabbit[- ]Hole",
+            r"CHAPTER I\b",
+            r"Chapter I\b",
+            r"\bAlice was beginning to get very tired\b",
+            r"\bOnce upon a time\b",
+        ]
+
+        start_index = None
+        for pattern in start_markers:
+            match = re.search(pattern, text, flags=re.IGNORECASE)
+            if match:
+                start_index = match.start()
+                break
+
+        if start_index is not None:
+            text = text[start_index:]
+
+        return text.strip()
+
+    def clean_text(self, text: str) -> str:
+        """
+        Clean text for analysis and display.
+        """
+        if not text:
+            return ""
+
+        text = self.remove_gutenberg_boilerplate(text)
+        text = self.remove_front_matter(text)
+
+        # Normalize whitespace
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+        # Keep paragraph boundaries temporarily
+        text = re.sub(r"\n\s*\n+", "\n\n", text)
+
+        # Remove single newlines inside paragraphs
+        text = re.sub(r"(?<!\n)\n(?!\n)", " ", text)
+
+        # Collapse spaces
+        text = re.sub(r"[ \t]+", " ", text)
+
+        # Collapse repeated blank lines
+        text = re.sub(r"\n{3,}", "\n\n", text)
+
+        return text.strip()
+
+    def get_sentences(self, text: str) -> List[str]:
+        """
+        Split text into sentences using a simple regex.
+        """
+        if not text:
+            return []
+
+        text = text.replace("\n", " ")
+        sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+        return [sentence.strip() for sentence in sentences if sentence.strip()]
+
+    def get_words(self, text: str) -> List[str]:
+        """
+        Extract words from text.
+        """
+        if not text:
+            return []
+
+        return re.findall(r"\b[a-zA-Z']+\b", text.lower())
 
     def get_text_statistics(self, text: str) -> Dict:
         """
-        Calculate basic statistics about the text
-
-        Returns dictionary with:
-            - total_characters
-            - total_words  
-            - total_sentences
-            - avg_word_length
-            - avg_sentence_length
-            - most_common_words (top 10)
+        Calculate basic statistics about the text.
         """
-        if not isinstance(text, str):
-            raise Exception("Text must be a string.")
+        cleaned_text = self.clean_text(text)
+        words = self.get_words(cleaned_text)
+        sentences = self.get_sentences(cleaned_text)
 
-        total_characters = len(text)
-
-        words = self.tokenize_words(text)
+        total_characters = len(cleaned_text)
         total_words = len(words)
-
-        sentences = self.tokenize_sentences(text)
         total_sentences = len(sentences)
 
-        avg_word_length = (
-            sum(len(word) for word in words) /
-            total_words if total_words > 0 else 0
-        )
+        avg_word_length = round(
+            sum(len(word) for word in words) / total_words, 2
+        ) if total_words > 0 else 0
 
-        avg_sentence_length = (
-            total_words / total_sentences if total_sentences > 0 else 0
-        )
+        avg_sentence_length = round(
+            total_words / total_sentences, 2
+        ) if total_sentences > 0 else 0
 
-        most_common_words = Counter(words).most_common(10)
+        filtered_words = [word for word in words if word not in self.stop_words]
+        common_words = Counter(filtered_words).most_common(10)
 
         return {
             "total_characters": total_characters,
             "total_words": total_words,
             "total_sentences": total_sentences,
-            "avg_word_length": round(avg_word_length, 2),
-            "avg_sentence_length": round(avg_sentence_length, 2),
-            "most_common_words": most_common_words
+            "avg_word_length": avg_word_length,
+            "avg_sentence_length": avg_sentence_length,
+            "most_common_words": [
+                {"word": word, "count": count}
+                for word, count in common_words
+            ],
         }
 
     def create_summary(self, text: str, num_sentences: int = 3) -> str:
         """
-        Create a simple extractive summary by returning the first N sentences
-
-        Args:
-            text: Cleaned text
-            num_sentences: Number of sentences to include
-
-        Returns:
-            Summary string
+        Create a simple extractive summary using the first meaningful
+        story sentences after cleaning.
         """
-        if not isinstance(text, str):
-            raise Exception("Text must be a string.")
-
-        if num_sentences <= 0:
+        if not text or num_sentences <= 0:
             return ""
 
-        sentences = self.tokenize_sentences(text)
-        return " ".join(sentences[:num_sentences])
+        cleaned_text = self.clean_text(text)
+        sentences = self.get_sentences(cleaned_text)
 
+        useful_sentences = []
+        for sentence in sentences:
+            s = sentence.strip()
+            lower = s.lower()
 
-class FrequencyAnalyzer:
-    """Calculate n-gram frequencies from tokenized text"""
+            if len(s.split()) < 8:
+                continue
 
-    def calculate_ngrams(self, tokens: List[str], n: int) -> Dict[Tuple[str, ...], int]:
-        """
-        Calculate n-gram frequencies
+            if any(bad in lower for bad in [
+                "chapter i",
+                "chapter ii",
+                "chapter iii",
+                "contents",
+                "illustration",
+                "project gutenberg",
+                "ebook",
+                "edition",
+            ]):
+                continue
 
-        Args:
-            tokens: List of tokens (words or characters)
-            n: Size of n-gram (1=unigram, 2=bigram, 3=trigram)
+            # Skip lines that are mostly uppercase headings
+            letters = [c for c in s if c.isalpha()]
+            if letters:
+                uppercase_ratio = sum(1 for c in letters if c.isupper()) / len(letters)
+                if uppercase_ratio > 0.6:
+                    continue
 
-        Returns:
-            Dictionary mapping n-grams to their counts
-        """
-        if n == 1:
-            # Special case for unigrams (return as single strings, not tuples)
-            return dict(Counter(tokens))
+            useful_sentences.append(s)
 
-        ngrams = []
-        for i in range(len(tokens) - n + 1):
-            ngram = tuple(tokens[i:i + n])
-            ngrams.append(ngram)
+            if len(useful_sentences) == num_sentences:
+                break
 
-        return dict(Counter(ngrams))
+        if useful_sentences:
+            return " ".join(useful_sentences)
 
-    def calculate_probabilities(self, ngram_counts: Dict, smoothing: float = 0.0) -> Dict:
-        """
-        Convert counts to probabilities
-
-        Args:
-            ngram_counts: Dictionary of n-gram counts
-            smoothing: Laplace smoothing parameter (0 = no smoothing)
-        """
-        total = sum(ngram_counts.values()) + smoothing * len(ngram_counts)
-
-        probabilities = {}
-        for ngram, count in ngram_counts.items():
-            probabilities[ngram] = (count + smoothing) / total
-
-        return probabilities
-
-    def save_frequencies(self, frequencies: Dict, filename: str):
-        """Save frequency dictionary to JSON file"""
-        # Convert tuples to strings for JSON serialization
-        json_friendly = {}
-        for key, value in frequencies.items():
-            if isinstance(key, tuple):
-                json_friendly['||'.join(key)] = value
-            else:
-                json_friendly[key] = value
-
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(json_friendly, f, indent=2, ensure_ascii=False)
-
-    def load_frequencies(self, filename: str) -> Dict:
-        """Load frequency dictionary from JSON file"""
-        with open(filename, 'r', encoding='utf-8') as f:
-            json_data = json.load(f)
-
-        # Convert string keys back to tuples where needed
-        frequencies = {}
-        for key, value in json_data.items():
-            if '||' in key:
-                frequencies[tuple(key.split('||'))] = value
-            else:
-                frequencies[key] = value
-
-        return frequencies
-
-
-# Example usage to test your setup
-if __name__ == "__main__":
-    # Test with a small example
-    sample_text = """
-    This is a test. This is only a test! 
-    If this were a real emergency, you would be informed.
-    """
-
-    preprocessor = TextPreprocessor()
-    analyzer = FrequencyAnalyzer()
-
-    # Clean and normalize
-    clean_text = preprocessor.normalize_text(sample_text)
-    print(f"Cleaned text: {clean_text}\n")
-
-    # Get sentences
-    sentences = preprocessor.tokenize_sentences(clean_text)
-    print(f"Sentences: {sentences}\n")
-
-    # Get words
-    words = preprocessor.tokenize_words(clean_text)
-    print(f"Words: {words}\n")
-
-    # Calculate bigrams
-    bigrams = analyzer.calculate_ngrams(words, 2)
-    print(f"Word bigrams: {bigrams}\n")
-
-    # Calculate character trigrams
-    chars = preprocessor.tokenize_chars(clean_text)
-    char_trigrams = analyzer.calculate_ngrams(chars, 3)
-    print(
-        f"Character trigrams (first 5): {dict(list(char_trigrams.items())[:5])}")
-
-    print("\n✅ Basic functionality working!")
-    print("Now implement the TODO methods for your assignment!")
+        return "Summary unavailable."

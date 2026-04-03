@@ -1,156 +1,175 @@
 #!/usr/bin/env python3
 """
 test_setup.py
-Environment validation script for the warm-up assignment
-
-Run this to verify your environment is set up correctly before starting the assignment.
+Improved environment validation script for the warm-up assignment
 """
 
 import sys
 import importlib
 import subprocess
 import platform
+import shutil
+import os
+
+MIN_PYTHON = (3, 9)
+
+def print_header(title):
+    print(f"\n{'=' * 60}")
+    print(f"{title}")
+    print(f"{'=' * 60}")
 
 def check_python_version():
     """Check if Python version is 3.9+"""
     version = sys.version_info
-    print(f"🐍 Python version: {version.major}.{version.minor}.{version.micro}")
-    
-    if version.major == 3 and version.minor >= 9:
-        print("✅ Python version is compatible")
+    print(f"Python version: {version.major}.{version.minor}.{version.micro}")
+
+    if version >= MIN_PYTHON:
+        print("PASS: Python version is compatible")
         return True
     else:
-        print("❌ Python 3.9+ required")
+        print(f"FAIL: Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]}+ required")
         return False
+
+def get_pip_command():
+    """Find a working pip command"""
+    for cmd in ["pip", "pip3", sys.executable + " -m pip"]:
+        if isinstance(cmd, str) and shutil.which(cmd.split()[0]):
+            return cmd
+    return None
 
 def check_required_packages():
     """Check if all required packages are installed"""
-    required_packages = [
-        'flask',
-        'requests', 
-        'bs4',  # beautifulsoup4 imports as bs4
-        'nltk',
-        'dotenv'  # python-dotenv imports as dotenv
-    ]
-    
-    print("\n📦 Checking required packages...")
+    required_packages = {
+        'flask': 'flask',
+        'requests': 'requests',
+        'bs4': 'beautifulsoup4',
+        'nltk': 'nltk',
+        'dotenv': 'python-dotenv'
+    }
+
+    print("\nChecking required packages...")
     all_installed = True
-    
-    for package in required_packages:
+    missing = []
+
+    for module, pip_name in required_packages.items():
         try:
-            importlib.import_module(package)
-            print(f"✅ {package}")
+            importlib.import_module(module)
+            print(f"PASS: {module}")
         except ImportError:
-            print(f"❌ {package} - Run: pip install {package}")
+            print(f"FAIL: {module}")
+            missing.append(pip_name)
             all_installed = False
-    
+
+    if missing:
+        pip_cmd = get_pip_command() or "pip"
+        print("\nInstall missing packages with:")
+        print(f"{pip_cmd} install {' '.join(missing)}")
+
     return all_installed
 
-def check_codespace_environment():
-    """Check if running in GitHub Codespaces"""
-    if 'CODESPACES' in sys.modules or 'CODESPACE_NAME' in sys.modules:
-        print("\n🚀 Running in GitHub Codespaces")
-        return True
+def check_environment():
+    """Detect environment type"""
+    print("\nEnvironment Info:")
+    print(f"Platform: {platform.system()} {platform.release()}")
+
+    if os.getenv("CODESPACE_NAME"):
+        print("Running in GitHub Codespaces")
     else:
-        print("\n💻 Running in local environment")
-        return True  # Not an error, just informational
+        print("Running locally")
+
+    return True
 
 def test_basic_functionality():
     """Test basic functionality of key libraries"""
-    print("\n🧪 Testing basic functionality...")
-    
+    print("\nTesting basic functionality...")
+
     try:
-        # Test requests
         import requests
-        print("✅ requests library working")
-        
-        # Test Flask
         from flask import Flask
-        test_app = Flask(__name__)
-        print("✅ Flask can create app instance")
-        
-        # Test text processing
-        import re
+
+        app = Flask(__name__)
+
         text = "Hello, World! This is a test."
         words = text.lower().split()
-        print(f"✅ Text processing working: {len(words)} words found")
-        
+
+        assert len(words) > 0
+
+        print("PASS: requests working")
+        print("PASS: Flask app creation working")
+        print(f"PASS: Text processing working ({len(words)} words)")
+
         return True
-        
+
     except Exception as e:
-        print(f"❌ Functionality test failed: {e}")
+        print(f"FAIL: Functionality test failed:\n   {e}")
         return False
 
 def test_project_gutenberg_access():
-    """Test if we can access Project Gutenberg URLs"""
-    print("\n📚 Testing Project Gutenberg access...")
-    
+    """Test access to Project Gutenberg"""
+    print("\nTesting Project Gutenberg access...")
+
     try:
         import requests
-        
-        # Test with a small file
-        test_url = "https://www.gutenberg.org/files/1342/1342-0.txt"
-        response = requests.head(test_url, timeout=10)
-        
-        if response.status_code == 200:
-            print("✅ Project Gutenberg accessible")
+
+        url = "https://www.gutenberg.org/files/1342/1342-0.txt"
+        response = requests.head(url, timeout=10)
+
+        if response.ok:
+            print("PASS: Project Gutenberg reachable")
             return True
         else:
-            print(f"⚠️  Project Gutenberg returned status {response.status_code}")
+            print(f"WARNING: Unexpected status code: {response.status_code}")
             return False
-            
-    except Exception as e:
-        print(f"⚠️  Could not reach Project Gutenberg: {e}")
-        print("   This might be a temporary network issue")
+
+    except requests.exceptions.Timeout:
+        print("WARNING: Timeout - network may be slow")
+        return False
+    except requests.exceptions.RequestException as e:
+        print(f"WARNING: Network error: {e}")
         return False
 
-def main():
-    """Run all setup tests"""
-    print("🔍 CSE 510 Warm-Up Assignment - Environment Setup Test")
-    print("=" * 60)
-    
+def run_tests():
+    """Run all tests and summarize results"""
+    print_header("CSE 510 Warm-Up - Environment Setup Test")
+
     tests = [
         ("Python Version", check_python_version),
-        ("Required Packages", check_required_packages), 
+        ("Required Packages", check_required_packages),
+        ("Environment", check_environment),
         ("Basic Functionality", test_basic_functionality),
         ("Project Gutenberg Access", test_project_gutenberg_access)
     ]
-    
+
     results = []
-    for test_name, test_func in tests:
-        print(f"\n--- {test_name} ---")
-        result = test_func()
-        results.append((test_name, result))
-    
-    # Summary
-    print("\n" + "=" * 60)
-    print("📋 SETUP TEST SUMMARY")
-    print("=" * 60)
-    
+
+    for name, test in tests:
+        print(f"\n--- {name} ---")
+        result = test()
+        results.append((name, result))
+
+    print_header("SETUP TEST SUMMARY")
+
     all_passed = True
-    for test_name, passed in results:
-        status = "✅ PASS" if passed else "❌ FAIL"
-        print(f"{status:<8} {test_name}")
+    for name, passed in results:
+        status = "PASS" if passed else "FAIL"
+        print(f"{status:<6} {name}")
         if not passed:
             all_passed = False
-    
+
     print("\n" + "=" * 60)
+
     if all_passed:
-        print("🎉 ENVIRONMENT SETUP COMPLETE!")
-        print("You're ready to start the warm-up assignment!")
-        print("\nNext steps:")
-        print("1. Read the assignment PDF carefully")
-        print("2. Start with Part 2: Extending the TextPreprocessor")
-        print("3. Test each part incrementally")
+        print("ENVIRONMENT SETUP COMPLETE")
+        print("You are ready to start the assignment.\n")
     else:
-        print("⚠️  SETUP INCOMPLETE")
-        print("Please fix the failed tests before starting the assignment.")
-        print("\nTip: Run 'pip install -r requirements.txt' to install missing packages")
-    
-    print("=" * 60)
-    
+        print("SETUP INCOMPLETE")
+        print("Fix the issues above before continuing.\n")
+
     return all_passed
 
-if __name__ == "__main__":
-    success = main()
+def main():
+    success = run_tests()
     sys.exit(0 if success else 1)
+
+if __name__ == "__main__":
+    main()

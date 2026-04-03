@@ -1,90 +1,350 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Gutenberg Text Cleaner</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial;
-            margin: 40px;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f7fb;
+            color: #1f2937;
         }
 
-        input {
-            width: 400px;
-            padding: 10px;
+        .page {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 40px 20px 60px;
         }
 
-        button {
-            padding: 10px;
+        .hero {
+            text-align: center;
+            margin-bottom: 28px;
         }
 
-        #results {
+        .hero h1 {
+            margin: 0 0 10px;
+            font-size: 2.2rem;
+        }
+
+        .hero p {
+            margin: 0;
+            color: #4b5563;
+            font-size: 1rem;
+        }
+
+        .panel {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+            border: 1px solid #e5e7eb;
+        }
+
+        form {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 12px;
             margin-top: 20px;
         }
 
+        input[type="url"] {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            font-size: 1rem;
+            outline: none;
+        }
+
+        input[type="url"]:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+        }
+
+        button {
+            border: none;
+            border-radius: 12px;
+            padding: 14px 20px;
+            background: #2563eb;
+            color: white;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        .message {
+            margin-top: 18px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            font-size: 0.95rem;
+        }
+
         .loading {
-            color: blue;
+            background: #eff6ff;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
         }
 
         .error {
-            color: red;
+            background: #fef2f2;
+            color: #b91c1c;
+            border: 1px solid #fecaca;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .results {
+            margin-top: 24px;
+            display: grid;
+            gap: 20px;
+        }
+
+        .card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+            border: 1px solid #e5e7eb;
+        }
+
+        .card h2 {
+            margin-top: 0;
+            margin-bottom: 16px;
+            font-size: 1.5rem;
+        }
+
+        .summary-box,
+        .preview-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 16px;
+            line-height: 1.6;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+        }
+
+        .stat-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .stat-label {
+            display: block;
+            font-size: 0.92rem;
+            color: #6b7280;
+            margin-bottom: 6px;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: Consolas, monospace;
+            font-size: 0.96rem;
+        }
+
+        .subtle {
+            color: #6b7280;
+            margin-top: -6px;
+            margin-bottom: 16px;
+        }
+
+        @media (max-width: 700px) {
+            form {
+                grid-template-columns: 1fr;
+            }
+
+            button {
+                width: 100%;
+            }
         }
     </style>
 </head>
-
 <body>
+    <div class="page">
+        <div class="hero">
+            <h1>Gutenberg Text Cleaner</h1>
+            <p>Paste a Project Gutenberg .txt URL to clean, summarize, and analyze a text.</p>
+        </div>
 
-    <h1>Gutenberg Text Cleaner</h1>
+        <div class="panel">
+            <form id="cleanForm">
+                <input
+                    type="url"
+                    id="urlInput"
+                    placeholder="https://www.gutenberg.org/files/1342/1342-0.txt"
+                    required
+                />
+                <button type="submit">Analyze Text</button>
+            </form>
 
-    <input id="urlInput" placeholder="Enter Gutenberg URL">
-    <button onclick="submitForm()">Submit</button>
+            <div id="loadingBox" class="message loading hidden">
+                Processing the text and generating results...
+            </div>
 
-    <p id="loading" class="loading"></p>
+            <div id="errorBox" class="message error hidden"></div>
+        </div>
 
-    <div id="results"></div>
+        <div id="results" class="results hidden">
+            <div class="card">
+                <h2>3-Sentence Summary</h2>
+                <div id="summaryText" class="summary-box"></div>
+            </div>
+
+            <div class="card">
+                <h2>Statistics</h2>
+                <div id="statisticsGrid" class="stats-grid"></div>
+            </div>
+
+            <div class="card">
+                <h2>Most Common Words</h2>
+                <ul id="commonWordsList"></ul>
+            </div>
+
+            <div class="card">
+                <h2>Cleaned Text Preview</h2>
+                <p class="subtle">Showing the first 500 characters.</p>
+                <div class="preview-box">
+                    <pre id="cleanedTextPreview"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script>
-        async function submitForm() {
-            const url = document.getElementById("urlInput").value;
-            const loading = document.getElementById("loading");
-            const results = document.getElementById("results");
+        const form = document.getElementById("cleanForm");
+        const urlInput = document.getElementById("urlInput");
+        const loadingBox = document.getElementById("loadingBox");
+        const errorBox = document.getElementById("errorBox");
+        const results = document.getElementById("results");
+        const summaryText = document.getElementById("summaryText");
+        const statisticsGrid = document.getElementById("statisticsGrid");
+        const commonWordsList = document.getElementById("commonWordsList");
+        const cleanedTextPreview = document.getElementById("cleanedTextPreview");
 
-            loading.innerText = "Loading...";
-            results.innerHTML = "";
+        function showLoading() {
+            loadingBox.classList.remove("hidden");
+        }
+
+        function hideLoading() {
+            loadingBox.classList.add("hidden");
+        }
+
+        function showError(message) {
+            errorBox.textContent = message;
+            errorBox.classList.remove("hidden");
+        }
+
+        function clearError() {
+            errorBox.textContent = "";
+            errorBox.classList.add("hidden");
+        }
+
+        function clearResults() {
+            results.classList.add("hidden");
+            summaryText.textContent = "";
+            statisticsGrid.innerHTML = "";
+            commonWordsList.innerHTML = "";
+            cleanedTextPreview.textContent = "";
+        }
+
+        function addStat(label, value) {
+            const box = document.createElement("div");
+            box.className = "stat-box";
+            box.innerHTML = `
+                <span class="stat-label">${label}</span>
+                <span class="stat-value">${value}</span>
+            `;
+            statisticsGrid.appendChild(box);
+        }
+
+        form.addEventListener("submit", async function(event) {
+            event.preventDefault();
+
+            clearError();
+            clearResults();
+            showLoading();
 
             try {
-                const response = await fetch('/api/clean', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: url })
+                const response = await fetch("/api/clean", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        url: urlInput.value.trim()
+                    })
                 });
 
                 const data = await response.json();
+                hideLoading();
 
-                loading.innerText = "";
-
-                if (data.success) {
-                    results.innerHTML = `
-                <h3>Summary</h3>
-                <p>${data.summary}</p>
-
-                <h3>Statistics</h3>
-                <pre>${JSON.stringify(data.statistics, null, 2)}</pre>
-
-                <h3>Cleaned Text (First 500 chars)</h3>
-                <p>${data.cleaned_text}</p>
-            `;
-                } else {
-                    results.innerHTML = `<p class="error">${data.error}</p>`;
+                if (!response.ok || !data.success) {
+                    showError(data.error || "An unexpected error occurred.");
+                    return;
                 }
 
-            } catch (err) {
-                loading.innerText = "";
-                results.innerHTML = `<p class="error">Request failed</p>`;
+                summaryText.textContent = data.summary || "Summary unavailable.";
+
+                addStat("Total Characters", data.statistics.total_characters);
+                addStat("Total Words", data.statistics.total_words);
+                addStat("Total Sentences", data.statistics.total_sentences);
+                addStat("Average Word Length", data.statistics.avg_word_length);
+                addStat("Average Sentence Length", data.statistics.avg_sentence_length);
+
+                if (data.statistics.most_common_words?.length) {
+                    data.statistics.most_common_words.forEach(item => {
+                        const li = document.createElement("li");
+                        li.textContent = `${item.word} (${item.count})`;
+                        commonWordsList.appendChild(li);
+                    });
+                } else {
+                    const li = document.createElement("li");
+                    li.textContent = "No common word data available.";
+                    commonWordsList.appendChild(li);
+                }
+
+                cleanedTextPreview.textContent = data.cleaned_text.slice(0, 500);
+                results.classList.remove("hidden");
+            } catch (error) {
+                hideLoading();
+                showError("Unable to connect to the server. Please try again.");
+                console.error(error);
             }
-        }
+        });
     </script>
-
 </body>
-
 </html>
